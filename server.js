@@ -750,6 +750,106 @@ app.post('/dialogflow', async (request, response) => {
         });
     }
 });
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+app.get('/api/admin/overview', async (req, res) => {
+    if (!supabase) {
+        return res.status(500).json({ error: 'Supabase client is not initialised' });
+    }
+
+    try {
+        const [convCountRes, faqCountRes, feedbackCountRes, convRowsRes, faqRowsRes] = await Promise.all([
+            supabase.from(conversationsTable).select('*', { count: 'exact', head: true }),
+            supabase.from(faqTable).select('*', { count: 'exact', head: true }),
+            supabase.from(feedbackTable).select('*', { count: 'exact', head: true }),
+            supabase
+                .from(conversationsTable)
+                .select('id, session_id, intent_name, user_name, user_email, created_at, used_gemini, fallback_reason')
+                .order('created_at', { ascending: false })
+                .limit(100),
+            supabase
+                .from(faqTable)
+                .select('id, question_text, created_at')
+                .order('created_at', { ascending: false })
+                .limit(500)
+        ]);
+
+        if (convCountRes.error || faqCountRes.error || feedbackCountRes.error || convRowsRes.error || faqRowsRes.error) {
+            console.error('❌ Admin overview query error', convCountRes.error || faqCountRes.error || feedbackCountRes.error || convRowsRes.error || faqRowsRes.error);
+            return res.status(500).json({ error: 'Failed to query Supabase for admin overview' });
+        }
+
+        const totals = {
+            conversations: convCountRes.count || 0,
+            faqs: faqCountRes.count || 0,
+            feedbacks: feedbackCountRes.count || 0
+        };
+
+        const convRows = convRowsRes.data || [];
+        const faqRows = faqRowsRes.data || [];
+
+        const geminiUsageMap = {};
+        const failedIntentsMap = {};
+        const userMap = {};
+
+        for (const row of convRows) {
+            const intentKey = row.intent_name || 'Unknown';
+            if (row.used_gemini) {
+                geminiUsageMap[intentKey] = (geminiUsageMap[intentKey] || 0) + 1;
+                if (row.fallback_reason) {
+                    const fk = `${intentKey}|${row.fallback_reason}`;
+                    const existing = failedIntentsMap[fk] || { intent_name: intentKey, fallback_reason: row.fallback_reason, count: 0 };
+                    existing.count += 1;
+                    failedIntentsMap[fk] = existing;
+                }
+            }
+
+            if (row.user_email) {
+                const key = row.user_email;
+                const existingUser = userMap[key];
+                if (!existingUser || new Date(row.created_at) > new Date(existingUser.last_seen)) {
+                    userMap[key] = {
+                        user_email: row.user_email,
+                        user_name: row.user_name,
+                        last_seen: row.created_at
+                    };
+                }
+            }
+        }
+
+        const geminiUsageByIntent = Object.entries(geminiUsageMap).map(([intent_name, count]) => ({ intent_name, count }));
+        const failedIntents = Object.values(failedIntentsMap);
+
+        const faqCountMap = {};
+        for (const row of faqRows) {
+            const q = row.question_text || 'Unknown';
+            faqCountMap[q] = (faqCountMap[q] || 0) + 1;
+        }
+        const topFaqs = Object.entries(faqCountMap)
+            .map(([question_text, count]) => ({ question_text, count }))
+            .sort((a, b) => (b.count || 0) - (a.count || 0))
+            .slice(0, 10);
+
+        const recentConversations = convRows;
+        const recentUsers = Object.values(userMap)
+            .sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen))
+            .slice(0, 20);
+
+        return res.json({
+            totals,
+            geminiUsageByIntent,
+            failedIntents,
+            topFaqs,
+            recentConversations,
+            recentUsers
+        });
+    } catch (error) {
+        console.error('❌ Error building admin overview:', error);
+        return res.status(500).json({ error: 'Failed to build admin overview' });
+    }
+});
 
 app.listen(port, () => {
     console.log(`Saylani Bot is running locally on port ${port}`);

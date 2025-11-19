@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #020617; color: #e5e7eb; }
+    .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+    .header { padding: 16px 24px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; background: #020617; position: sticky; top: 0; z-index: 10; }
+    .header-title { font-size: 20px; font-weight: 600; }
+    .header-sub { font-size: 13px; color: #9ca3af; }
+    .badge { padding: 2px 8px; border-radius: 999px; background: #0f172a; font-size: 11px; color: #a5b4fc; border: 1px solid #1d2a4a; }
+    .content { padding: 16px 24px 32px; max-width: 1200px; margin: 0 auto; width: 100%; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .card { background: #020617; border-radius: 12px; border: 1px solid #1f2937; padding: 16px 18px; box-shadow: 0 10px 40px rgba(15,23,42,0.6); }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .card-title { font-size: 14px; font-weight: 500; color: #9ca3af; }
+    .card-value { font-size: 24px; font-weight: 600; color: #e5e7eb; }
+    .card-sub { font-size: 11px; color: #6b7280; }
+    .section { margin-top: 24px; }
+    .section-title { font-size: 16px; font-weight: 500; margin-bottom: 8px; }
+    .section-sub { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid #111827; text-align: left; }
+    th { font-weight: 500; color: #9ca3af; background: #020617; position: sticky; top: 0; z-index: 5; }
+    tr:nth-child(even) td { background: #020617; }
+    .pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; }
+    .pill-green { background: rgba(22,163,74,0.15); color: #4ade80; }
+    .pill-amber { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .pill-sky { background: rgba(56,189,248,0.15); color: #38bdf8; }
+    .pill-slate { background: rgba(148,163,184,0.15); color: #cbd5f5; }
+    .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #0f172a; color: #9ca3af; }
+    .muted { color: #6b7280; }
+    .status-dot { width: 6px; height: 6px; border-radius: 999px; margin-right: 4px; }
+    .status-dot-green { background: #22c55e; }
+    .status-dot-amber { background: #fbbf24; }
+    .status-dot-sky { background: #38bdf8; }
+    .status-dot-slate { background: #64748b; }
+    .flex { display: flex; align-items: center; }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .mt-8 { margin-top: 8px; }
+    .mt-12 { margin-top: 12px; }
+    .mt-16 { margin-top: 16px; }
+    .scroll-y { max-height: 260px; overflow-y: auto; }
+    .small { font-size: 11px; }
+    .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; border: 1px solid #1e293b; font-size: 11px; color: #9ca3af; margin-right: 6px; margin-bottom: 4px; }
+    .link { color: #a5b4fc; text-decoration: none; font-size: 12px; }
+    .link:hover { text-decoration: underline; }
+  </style>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    function GeminiUsageChart({ items }) {
+      const canvasRef = useRef(null);
+      const chartRef = useRef(null);
+
+      useEffect(() => {
+        if (!canvasRef.current) return;
+        const labels = items.map(i => i.intent_name || 'Unknown');
+        const values = items.map(i => i.count || 0);
+        if (chartRef.current) {
+          chartRef.current.destroy();
+        }
+        if (labels.length === 0) return;
+        const ctx = canvasRef.current.getContext('2d');
+        chartRef.current = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Gemini calls',
+              data: values,
+              backgroundColor: 'rgba(59,130,246,0.6)',
+              borderColor: 'rgba(96,165,250,1)',
+              borderWidth: 1,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: '#9ca3af' }, grid: { display: false } },
+              y: { ticks: { color: '#9ca3af' }, grid: { color: '#111827' }, beginAtZero: true }
+            }
+          }
+        });
+      }, [items]);
+
+      return <div style={{height: 220}}><canvas ref={canvasRef} /></div>;
+    }
+
+    function FailedIntentsChart({ items }) {
+      const canvasRef = useRef(null);
+      const chartRef = useRef(null);
+
+      useEffect(() => {
+        if (!canvasRef.current) return;
+        const labels = items.map(i => (i.intent_name || 'Unknown') + ' • ' + (i.fallback_reason || 'fallback'));
+        const values = items.map(i => i.count || 0);
+        if (chartRef.current) {
+          chartRef.current.destroy();
+        }
+        if (labels.length === 0) return;
+        const ctx = canvasRef.current.getContext('2d');
+        chartRef.current = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels,
+            datasets: [{
+              data: values,
+              backgroundColor: [
+                'rgba(239,68,68,0.7)',
+                'rgba(249,115,22,0.7)',
+                'rgba(59,130,246,0.7)',
+                'rgba(34,197,94,0.7)',
+                'rgba(236,72,153,0.7)'
+              ]
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#9ca3af', boxWidth: 10 } } }
+          }
+        });
+      }, [items]);
+
+      return <div style={{height: 220}}><canvas ref={canvasRef} /></div>;
+    }
+
+    function DashboardApp() {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        async function load() {
+          try {
+            setLoading(true);
+            const res = await fetch('/api/admin/overview');
+            if (!res.ok) {
+              throw new Error('Failed to load admin data');
+            }
+            const json = await res.json();
+            setData(json);
+          } catch (e) {
+            setError(e.message || 'Error');
+          } finally {
+            setLoading(false);
+          }
+        }
+        load();
+      }, []);
+
+      return (
+        <div className="app-shell">
+          <header className="header">
+            <div>
+              <div className="header-title">Admin Dashboard</div>
+              <div className="header-sub">Live view of conversations, FAQs, feedback, and Gemini usage.</div>
+            </div>
+            <div className="flex">
+              <div className="badge">Supabase · Dialogflow · Gemini</div>
+            </div>
+          </header>
+          <main className="content">
+            {loading && (
+              <div className="card">
+                <div className="card-title">Loading analytics…</div>
+              </div>
+            )}
+            {error && (
+              <div className="card">
+                <div className="card-title" style={{color:'#f97316'}}>Error</div>
+                <div className="small">{error}</div>
+              </div>
+            )}
+            {data && !loading && !error && (
+              <>
+                <section className="grid">
+                  <div className="card">
+                    <div className="card-header">
+                      <div className="card-title">Total Conversations</div>
+                      <span className="pill pill-sky"><span className="status-dot status-dot-sky"></span>Live</span>
+                    </div>
+                    <div className="card-value">{data.totals?.conversations ?? 0}</div>
+                    <div className="card-sub">Rows in support_conversations</div>
+                  </div>
+                  <div className="card">
+                    <div className="card-header">
+                      <div className="card-title">FAQ Questions</div>
+                      <span className="pill pill-slate">Knowledge</span>
+                    </div>
+                    <div className="card-value">{data.totals?.faqs ?? 0}</div>
+                    <div className="card-sub">Entries stored in faqs table</div>
+                  </div>
+                  <div className="card">
+                    <div className="card-header">
+                      <div className="card-title">Feedback Items</div>
+                      <span className="pill pill-green"><span className="status-dot status-dot-green"></span>Signals</span>
+                    </div>
+                    <div className="card-value">{data.totals?.feedbacks ?? 0}</div>
+                    <div className="card-sub">User feedback stored in feedbacks</div>
+                  </div>
+                  <div className="card">
+                    <div className="card-header">
+                      <div className="card-title">Gemini Calls</div>
+                      <span className="pill pill-amber"><span className="status-dot status-dot-amber"></span>LLM</span>
+                    </div>
+                    <div className="card-value">{data.geminiUsageByIntent?.reduce((sum, x) => sum + (x.count || 0), 0) ?? 0}</div>
+                    <div className="card-sub">Times fallback or FAQ used Gemini</div>
+                  </div>
+                </section>
+
+                <section className="section grid">
+                  <div className="card">
+                    <div className="section-title">Gemini Usage by Intent</div>
+                    <div className="section-sub">How often Gemini was invoked per intent.</div>
+                    {data.geminiUsageByIntent && data.geminiUsageByIntent.length > 0 ? (
+                      <GeminiUsageChart items={data.geminiUsageByIntent} />
+                    ) : (
+                      <div className="small muted mt-8">No Gemini calls recorded yet.</div>
+                    )}
+                  </div>
+                  <div className="card">
+                    <div className="section-title">Failed / Fallback Intents</div>
+                    <div className="section-sub">Where Dialogflow relied on Gemini or failed routing.</div>
+                    {data.failedIntents && data.failedIntents.length > 0 ? (
+                      <FailedIntentsChart items={data.failedIntents} />
+                    ) : (
+                      <div className="small muted mt-8">No failed or fallback intents recorded yet.</div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="section grid">
+                  <div className="card">
+                    <div className="section-title">Most-asked Questions</div>
+                    <div className="section-sub">Aggregated from faqs table.</div>
+                    <div className="scroll-y mt-8">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th style={{width:'70%'}}>Question</th>
+                            <th>Count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data.topFaqs || []).map((row, idx) => (
+                            <tr key={idx}>
+                              <td>{row.question_text || 'Unknown'}</td>
+                              <td>{row.count || 0}</td>
+                            </tr>
+                          ))}
+                          {(!data.topFaqs || data.topFaqs.length === 0) && (
+                            <tr>
+                              <td colSpan="2" className="muted small">No FAQ data yet.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="section-title">Recent Users</div>
+                    <div className="section-sub">Unique users seen in recent conversations.</div>
+                    <div className="scroll-y mt-8">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Last Seen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data.recentUsers || []).map((row, idx) => (
+                            <tr key={idx}>
+                              <td>{row.user_name || 'Anonymous'}</td>
+                              <td>{row.user_email || '-'}</td>
+                              <td className="small muted">{row.last_seen ? new Date(row.last_seen).toLocaleString() : '-'}</td>
+                            </tr>
+                          ))}
+                          {(!data.recentUsers || data.recentUsers.length === 0) && (
+                            <tr>
+                              <td colSpan="3" className="muted small">No user data yet.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="section">
+                  <div className="card">
+                    <div className="section-title">Recent Conversations</div>
+                    <div className="section-sub">Last 100 entries from support_conversations.</div>
+                    <div className="scroll-y mt-8">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Time</th>
+                            <th>Intent</th>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Gemini</th>
+                            <th>Fallback</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data.recentConversations || []).map(row => (
+                            <tr key={row.id}>
+                              <td className="small muted">{row.created_at ? new Date(row.created_at).toLocaleString() : '-'}</td>
+                              <td><span className="tag">{row.intent_name || 'Unknown'}</span></td>
+                              <td>{row.user_name || 'Anonymous'}</td>
+                              <td>{row.user_email || '-'}</td>
+                              <td>
+                                {row.used_gemini ? (
+                                  <span className="pill pill-amber small"><span className="status-dot status-dot-amber"></span>Yes</span>
+                                ) : (
+                                  <span className="pill pill-slate small"><span className="status-dot status-dot-slate"></span>No</span>
+                                )}
+                              </td>
+                              <td className="small muted">{row.fallback_reason || '-'}</td>
+                            </tr>
+                          ))}
+                          {(!data.recentConversations || data.recentConversations.length === 0) && (
+                            <tr>
+                              <td colSpan="6" className="muted small">No conversations yet.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+
+                <div className="mt-16 small muted">
+                  Data is loaded live from Supabase via /api/admin/overview. For security, ensure this dashboard is only exposed to admins.
+                </div>
+              </>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<DashboardApp />);
+  </script>
+</body>
+</html>
