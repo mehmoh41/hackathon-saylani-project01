@@ -1,0 +1,21 @@
+{
+  "name": "hackathon-project01",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.83.0",
+    "body-parser": "^2.2.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "node-fetch": "^2.7.0",
+    "path": "^0.12.7"
+  }
+}
