@@ -14,6 +14,10 @@ const app = express();
 app.use(bodyParser.json());
 const port = process.env.PORT || 3000;
 
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // --- 2. SUPABASE CLIENT SETUP ---
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
