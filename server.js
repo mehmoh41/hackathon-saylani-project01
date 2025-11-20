@@ -7,13 +7,14 @@ const bodyParser = require('body-parser');
 const { createClient } = require('@supabase/supabase-js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Always load .env that sits next to this file, regardless of where node is started
+// Always load .env next to this file
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 app.use(bodyParser.json());
 const port = process.env.PORT || 3000;
 
+// Serve frontend
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -26,12 +27,13 @@ const faqTable = process.env.SUPABASE_FAQ_TABLE || 'faqs';
 const feedbackTable = process.env.SUPABASE_FEEDBACK_TABLE || 'feedbacks';
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const geminiModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+
 let supabase = null;
 if (supabaseUrl && supabaseKey) {
     supabase = createClient(supabaseUrl, supabaseKey);
     console.log('✅ Supabase client initialised');
 } else {
-    console.warn('⚠️  Supabase credentials are missing. Conversation logging will be skipped.');
+    console.warn('⚠️ Supabase credentials are missing; skipping DB logging.');
 }
 
 let geminiClient = null;
@@ -39,22 +41,24 @@ if (geminiApiKey) {
     geminiClient = new GoogleGenerativeAI(geminiApiKey);
     console.log('✅ Gemini client initialised');
 } else {
-    console.warn('⚠️  Gemini API key missing; fallback will use default message.');
+    console.warn('⚠️ Gemini API key missing; fallback will use default message.');
 }
 
+// Generate response using Gemini (or fallback)
 async function generateFallbackResponse(prompt) {
     if (!geminiClient) {
-        console.warn('⚠️  Gemini client not available; using default fallback message.');
+        console.warn('⚠️ Gemini client not available; using default fallback message.');
         return "I'm sorry, I didn't catch that. Could you please rephrase?";
     }
 
     try {
         const model = geminiClient.getGenerativeModel({ model: geminiModel });
         const result = await model.generateContent(prompt);
-        const candidateText = result?.response?.text()?.trim();
+        // FIXED: Optional chaining used correctly (no space)
+        const candidateText = result ? .response ? .text ? .trim();
         return candidateText || "I'm sorry, I still didn't understand. Could you please clarify?";
     } catch (error) {
-        console.error('❌ Gemini fallback failed:', error.message);
+        console.error('❌ Gemini fallback failed:', error);
         return "I'm sorry, I didn't catch that. Could you please rephrase?";
     }
 }
@@ -64,256 +68,209 @@ const CHIP_IMAGES = {
     support: 'https://www.svgrepo.com/show/485554/customer-support.svg',
     faq: 'https://www.svgrepo.com/show/488191/faq.svg',
     feedback: 'https://www.svgrepo.com/show/339196/feedback-02.svg'
-   
 };
 
 const faqPendingSessions = new Set();
 const feedbackPendingSessions = new Set();
 
 const FAQ_PREDEFINED = [
-  {
-    question: "How can I contact customer support?",
-    answer:
-      "You can reach our customer support team through live chat, email, or by submitting a ticket on our support page. Our team is available 24/7 to assist you."
-  },
-  {
-    question: "What is the average response time?",
-    answer:
-      "Our typical response time is within a few minutes via live chat and within 12–24 hours for email or ticket inquiries."
-  },
-  {
-    question: "How do I create an account?",
-    answer:
-      "To create an account, simply click on the 'Sign Up' button on our website, enter your details, and follow the instructions to verify your email."
-  },
-  {
-    question: "I forgot my password. How can I reset it?",
-    answer:
-      "Click on the 'Forgot Password' option on the login page, enter your registered email, and follow the secure link sent to you to reset your password."
-  },
-  {
-    question: "How do I track my order or request?",
-    answer:
-      "You can track your order or service request by logging into your account and viewing the 'Orders' or 'Requests' section in your dashboard."
-  },
-  {
-    question: "What payment methods do you accept?",
-    answer:
-      "We accept major credit and debit cards, bank transfers, PayPal, and supported digital wallets depending on your region."
-  },
-  {
-    question: "Can I modify or cancel my order?",
-    answer:
-      "Yes, you can modify or cancel your order within a limited time window from your account dashboard. If the option is unavailable, please contact support for assistance."
-  },
-  {
-    question: "Do you offer refunds?",
-    answer:
-      "Refunds are available based on our refund policy. If eligible, you can submit a refund request through your account or by contacting customer support."
-  },
-  {
-    question: "How can I update my profile or account information?",
-    answer:
-      "You can update your personal details by going to the 'Account Settings' section after logging into your account."
-  },
-  {
-    question: "Is my personal information secure?",
-    answer:
-      "Yes, we use industry-standard encryption and security practices to ensure that your data is protected at all times."
-  },
-  {
-    question: "Do you provide support for technical issues?",
-    answer:
-      "Yes, our technical support team can help with troubleshooting, installation guidance, configuration issues, and general product assistance."
-  },
-  {
-    question: "Where can I find tutorials or documentation?",
-    answer:
-      "All guides, tutorials, and product documentation are available in the 'Help Center' section of our website."
-  }
+    { question: "How can I contact customer support?", answer: "You can reach our customer support team through live chat, email, or by submitting a ticket on our support page. Our team is available 24/7." },
+    { question: "What is the average response time?", answer: "Our typical response time is a few minutes via live chat, and within 12–24 hours for email or ticket inquiries." },
+    { question: "How do I create an account?", answer: "Click 'Sign Up' on our website, enter your details, and verify your email." },
+    { question: "I forgot my password. How can I reset it?", answer: "Use the 'Forgot Password' link on the login page, enter your registered email, and follow the link to reset your password." },
+    { question: "How do I track my order or request?", answer: "Log into your account, then go to the 'Orders' or 'Requests' section in your dashboard." },
+    { question: "What payment methods do you accept?", answer: "We accept major credit/debit cards, bank transfers, PayPal, and supported wallets." },
+    { question: "Can I modify or cancel my order?", answer: "You can modify/cancel your order within a limited window from your dashboard. If not, contact support." },
+    { question: "Do you offer refunds?", answer: "Refunds are possible according to our policy. Submit a request via your account or contact support." },
+    { question: "How can I update my profile or account information?", answer: "Go to 'Account Settings' after logging in to update your info." },
+    { question: "Is my personal information secure?", answer: "Yes, we use industry-standard encryption and security practices to protect your data." },
+    { question: "Do you provide support for technical issues?", answer: "Yes — for troubleshooting, installation, configuration, and general product assistance." },
+    { question: "Where can I find tutorials or documentation?", answer: "All guides and docs are in the 'Help Center' section of our site." }
 ];
 
-
 const FAQ_ANSWER_MAP = FAQ_PREDEFINED.reduce((acc, item) => {
-    const key = (item.question || '').trim().toLowerCase();
-    if (key) acc[key] = item.answer;
+    const key = item.question.trim().toLowerCase();
+    acc[key] = item.answer;
     return acc;
 }, {});
 
 function normalizeString(value) {
-    if (!value) return null;
+    if (value == null) return null;
     if (typeof value === 'string') return value.trim() || null;
     if (typeof value === 'object') {
-        if (value.name) return String(value.name).trim();
-        if (value.original) return String(value.original).trim();
-        if (value.displayName) return String(value.displayName).trim();
+        if (value.name) return String(value.name).trim() || null;
+        if (value.original) return String(value.original).trim() || null;
+        if (value.displayName) return String(value.displayName).trim() || null;
     }
     return null;
 }
 
-function extractName(parameters) {
-    if (!parameters) return null;
+function extractName(params) {
     return normalizeString(
-        parameters.name ||
-        parameters.person ||
-        (parameters.person && parameters.person.name) ||
-        (parameters.person && parameters.person.original) ||
-        parameters['given-name']
+        // FIXED: Optional chaining used correctly (no space)
+        params ? .name ||
+        params ? .person ? .name ||
+        params ? .person ? .original ||
+        params['given-name']
     );
 }
 
-function extractEmail(parameters) {
-    if (!parameters) return null;
-    const email = parameters.email || parameters.emailAddress || parameters['email-address'];
-    return normalizeString(email);
+function extractEmail(params) {
+    return normalizeString(
+        // FIXED: Optional chaining used correctly (no space)
+        params ? .email ||
+        params ? .emailAddress ||
+        params['email-address']
+    );
 }
 
-function extractUserMessage(parameters, fallbackText) {
-    if (!parameters) return normalizeString(fallbackText);
+function extractUserMessage(params, fallbackText) {
     return normalizeString(
-        parameters.problem ||
-        parameters.issue ||
-        parameters.message ||
-        parameters['problem-description'] ||
-        parameters['customer_message'] ||
+        // FIXED: Optional chaining used correctly (no space)
+        params ? .problem ||
+        params ? .issue ||
+        params ? .message ||
+        params['problem-description'] ||
+        params['customer_message'] ||
         fallbackText
     );
 }
 
-function extractRating(parameters) {
-    if (!parameters) return null;
-    const rating = parameters.rating || parameters.score || parameters['feedback-rating'];
-    if (rating === undefined || rating === null) return null;
-    if (typeof rating === 'number') return rating;
-    const normalized = normalizeString(rating);
-    const parsed = parseFloat(normalized);
+function extractRating(params) {
+    // FIXED: Optional chaining used correctly (no space)
+    const r = params ? .rating || params ? .score || params ? .['feedback-rating'];
+    if (r === undefined || r === null) return null;
+    const parsed = parseFloat(r);
     return Number.isNaN(parsed) ? null : parsed;
 }
 
-function extractFaqTopic(parameters, fallbackText) {
-    if (!parameters) return normalizeString(fallbackText);
+function extractFaqTopic(params, fallbackText) {
     return normalizeString(
-        parameters.topic ||
-        parameters.subject ||
-        parameters['faq-topic'] ||
+        // FIXED: Optional chaining used correctly (no space)
+        params ? .topic ||
+        params ? .subject ||
+        params ? .['faq-topic'] ||
         fallbackText
     );
+}
+
+// Generic function to sanitize a record before saving
+function sanitizeRecord(record) {
+    const sanitized = {};
+    for (const [key, value] of Object.entries(record)) {
+        if (value === undefined || (typeof value === 'string' && value.trim() === '')) {
+            sanitized[key] = null;
+        } else {
+            sanitized[key] = value;
+        }
+    }
+    return sanitized;
 }
 
 async function saveConversationRecord(record) {
     if (!supabase) {
-        console.warn('⏭️  Skipping Supabase insert because client is not initialised.');
+        console.warn('⏭️ Skipping Supabase insert: client not initialised.');
         return;
     }
 
-    const sanitizedRecord = Object.entries(record).reduce((acc, [key, value]) => {
-        if (value === undefined) {
-            acc[key] = null;
-        } else if (typeof value === 'string' && value.trim() === '') {
-            acc[key] = null;
-        } else {
-            acc[key] = value;
-        }
-        return acc;
-    }, {});
+    const sanitized = sanitizeRecord(record);
+    const { data, error } = await supabase
+        .from(conversationsTable)
+        .insert([sanitized])
+        .select();
 
-    const { data, error } = await supabase.from(conversationsTable).insert([sanitizedRecord]).select();
     if (error) {
-        console.error('❌ Failed to store conversation in Supabase:', error.message);
+        console.error('❌ Failed to store conversation:', error);
     } else {
-        console.log('💾 Conversation stored in Supabase', data?.[0]?.id || '');
+        // FIXED: Optional chaining used correctly (no space)
+        const insertedId = data ? .[0] ? .id ? ? null;
+        console.log('💾 Conversation stored, id =', insertedId);
     }
 }
 
 async function saveFaqRecord(record) {
     if (!supabase) {
-        console.warn('⏭️  Skipping Supabase insert because client is not initialised.');
+        console.warn('⏭️ Skipping Supabase insert for FAQ: client not initialised.');
         return;
     }
 
-    const sanitizedRecord = Object.entries(record).reduce((acc, [key, value]) => {
-        if (value === undefined) {
-            acc[key] = null;
-        } else if (typeof value === 'string' && value.trim() === '') {
-            acc[key] = null;
-        } else {
-            acc[key] = value;
-        }
-        return acc;
-    }, {});
+    const sanitized = sanitizeRecord(record);
+    const { data, error } = await supabase
+        .from(faqTable)
+        .insert([sanitized])
+        .select();
 
-    const { data, error } = await supabase.from(faqTable).insert([sanitizedRecord]).select();
     if (error) {
-        console.error('❌ Failed to store FAQ in Supabase:', error.message);
+        console.error('❌ Failed to store FAQ:', error);
     } else {
-        console.log('💾 FAQ stored in Supabase', data?.[0]?.id || '');
+        // FIXED: Optional chaining used correctly (no space)
+        const insertedId = data ? .[0] ? .id ? ? null;
+        console.log('💾 FAQ stored, id =', insertedId);
     }
 }
 
 async function saveFeedbackRecord(record) {
     if (!supabase) {
-        console.warn('⏭️  Skipping Supabase insert because client is not initialised.');
+        console.warn('⏭️ Skipping Supabase insert for feedback: client not initialised.');
         return;
     }
 
-    const sanitizedRecord = Object.entries(record).reduce((acc, [key, value]) => {
-        if (value === undefined) {
-            acc[key] = null;
-        } else if (typeof value === 'string' && value.trim() === '') {
-            acc[key] = null;
-        } else {
-            acc[key] = value;
-        }
-        return acc;
-    }, {});
+    const sanitized = sanitizeRecord(record);
+    const { data, error } = await supabase
+        .from(feedbackTable)
+        .insert([sanitized])
+        .select();
 
-    const { data, error } = await supabase.from(feedbackTable).insert([sanitizedRecord]).select();
     if (error) {
-        console.error('❌ Failed to store feedback in Supabase:', error.message);
+        console.error('❌ Failed to store feedback:', error);
     } else {
-        console.log('💾 Feedback stored in Supabase', data?.[0]?.id || '');
+        // FIXED: Optional chaining used correctly (no space)
+        const insertedId = data ? .[0] ? .id ? ? null;
+        console.log('💾 Feedback stored, id =', insertedId);
     }
 }
 
 function buildChipsPayload(options) {
     return {
-        "payload": {
-            "richContent": [
+        payload: {
+            richContent: [
                 [{
-                    "type": "chips",
-                    "options": options
-                }]
-            ]
-        }
+                    type: 'chips',
+                    options,
+                }, ],
+            ],
+        },
     };
 }
 
 function buildMissingFieldsResponse(missing) {
-    const text = `I still need your ${missing.join(' and ')}. Please provide the remaining detail(s) so I can log your request.`;
+    const text = `I still need your ${missing.join(' and ')}. Please provide the remaining detail(s).`;
     return {
-        "fulfillmentMessages": [{
-            "text": { "text": [text] }
-        }]
+        fulfillmentMessages: [{
+            text: { text: [text] },
+        }, ],
     };
 }
 
 // --- 4. WEBHOOK ROUTE ---
-app.post('/dialogflow', async (request, response) => {
+app.post('/dialogflow', async(req, res) => {
     try {
         console.log('👉 Request received!');
 
-        const detectedIntent = request.body.queryResult.intent.displayName;
-        const parameters = request.body.queryResult.parameters || {};
-        const sessionId = request.body.session || request.body.sessionId || request.body.responseId;
-        const channel = request.body.originalDetectIntentRequest?.source || 'dialogflow';
-        const queryText = request.body.queryResult.queryText || '';
-        const intentConfidence = request.body.queryResult.intentDetectionConfidence;
+        const body = req.body;
+        const queryResult = body.queryResult || {};
+        // FIXED: Optional chaining used correctly (no space)
+        const detectedIntent = queryResult.intent ? .displayName;
+        const parameters = queryResult.parameters || {};
+        const sessionId = body.session || body.sessionId || body.responseId;
+        // FIXED: Optional chaining used correctly (no space)
+        const channel = body.originalDetectIntentRequest ? .source || 'dialogflow';
+        const queryText = queryResult.queryText || '';
+        const intentConfidence = queryResult.intentDetectionConfidence;
         const fallbackThreshold = parseFloat(process.env.FALLBACK_CONFIDENCE_THRESHOLD || '0.6');
 
-        // Map chip labels (or quick replies) to server-side intents
         const chipIntentMap = {
             'customer support': 'Customer Support',
-            'customer support help': 'Customer Support',
             'faq': 'FAQ',
             'frequently asked questions': 'FAQ',
             'feedback': 'Feedback',
@@ -324,96 +281,78 @@ app.post('/dialogflow', async (request, response) => {
         const normalizedQuery = queryText.trim().toLowerCase();
         if (chipIntentMap[normalizedQuery]) {
             intentName = chipIntentMap[normalizedQuery];
-            console.log(`🔁 Overriding intent based on chip selection: ${intentName}`);
+            console.log(`🔁 Overriding intent based on chip: ${intentName}`);
         }
 
-        // If the session is in the middle of an FAQ or Feedback flow,
-        // force routing to that intent so we don't accidentally hit
-        // Customer Support or other flows.
-        const hasPendingFaqTop = faqPendingSessions.has(sessionId);
-        const hasPendingFeedbackTop = feedbackPendingSessions.has(sessionId);
+        const hasPendingFaq = faqPendingSessions.has(sessionId);
+        const hasPendingFeedback = feedbackPendingSessions.has(sessionId);
 
-        if (hasPendingFaqTop && intentName !== 'FAQ') {
-            console.log('🔁 Overriding intent to FAQ due to pending FAQ question');
+        if (hasPendingFaq && intentName !== 'FAQ') {
+            console.log('🔁 Forcing to FAQ due to pending FAQ session');
             intentName = 'FAQ';
-        } else if (hasPendingFeedbackTop && intentName !== 'Feedback') {
-            console.log('🔁 Overriding intent to Feedback due to pending feedback');
+        } else if (hasPendingFeedback && intentName !== 'Feedback') {
+            console.log('🔁 Forcing to Feedback due to pending feedback session');
             intentName = 'Feedback';
         }
 
+        // --- Handle Intents ---
         if (intentName === 'Default Welcome Intent') {
-            console.log('✅ Manual Logic: Welcome Intent');
+            const welcome = [
+                { text: 'Welcome to Our Virtual Assistant. How can I help you today?' },
+                { text: 'Please select a category below:' },
+            ];
 
-            const jsonResponse = {
-                "fulfillmentMessages": [
-                    {
-                        "text": {
-                            "text": [
-                                "Welcome to Our Virtual Assistant. How can I help you today?"
-                            ]
-                        }
-                    },
-                    {
-                        "text": {
-                            "text": [
-                                "Please select a category below to continue:"
-                            ]
-                        }
-                    },
-                    buildChipsPayload([
-                        {
-                        "text": "Customer Support",
-                        "image": { "src": { "rawUrl": CHIP_IMAGES.support } }
-                    },
-                      {
-                        "text": "FAQ",
-                        "image": { "src": { "rawUrl": CHIP_IMAGES.faq } }
-                    },
-                    {
-                        "text": "Feedback",
-                        "image": { "src": { "rawUrl": CHIP_IMAGES.feedback } }
-                    },
-                    
-                ])
+            const chips = buildChipsPayload([
+                { text: 'Customer Support', image: { src: { rawUrl: CHIP_IMAGES.support } } },
+                { text: 'FAQ', image: { src: { rawUrl: CHIP_IMAGES.faq } } },
+                { text: 'Feedback', image: { src: { rawUrl: CHIP_IMAGES.feedback } } }
+            ]);
+
+            return res.json({
+                fulfillmentMessages: [
+                    { text: { text: [welcome[0].text] } },
+                    { text: { text: [welcome[1].text] } },
+                    chips,
                 ]
-            };
-            return response.json(jsonResponse);
-        } else if (intentName === 'Customer Support') {
-            console.log('✅ Customer Support intent triggered');
+            });
+        }
 
+        if (intentName === 'Customer Support') {
+            console.log('✅ Customer Support flow');
+
+            // If confidence is too low, do fallback
             if (typeof intentConfidence === 'number' && intentConfidence < fallbackThreshold) {
-                const fallbackText = await generateFallbackResponse(queryText || 'Hello');
+                const fallback = await generateFallbackResponse(queryText || 'Hello');
 
                 await saveConversationRecord({
                     session_id: sessionId,
                     intent_name: intentName,
                     user_message: queryText,
                     channel,
-                    response_text: fallbackText,
+                    response_text: fallback,
                     intent_confidence: intentConfidence,
                     used_gemini: true,
                     fallback_reason: 'low_confidence'
                 });
 
-                return response.json({
-                    "fulfillmentText": fallbackText
-                });
+                return res.json({ fulfillmentText: fallback });
             }
 
-            const userName = normalizeString(parameters.name);
-            const userEmail = normalizeString(parameters.email);
-            const userMessage = normalizeString(parameters.message || queryText);
+            // Extract info
+            const userName = extractName(parameters);
+            const userEmail = extractEmail(parameters);
+            const userMessage = extractUserMessage(parameters, queryText);
 
-            const missingFields = [];
-            if (!userName) missingFields.push('name');
-            if (!userEmail) missingFields.push('email');
-            if (!userMessage) missingFields.push('message');
+            const missing = [];
+            if (!userName) missing.push('name');
+            if (!userEmail) missing.push('email');
+            if (!userMessage) missing.push('message');
 
-            if (missingFields.length > 0) {
-                return response.json(buildMissingFieldsResponse(missingFields));
+            if (missing.length) {
+                return res.json(buildMissingFieldsResponse(missing));
             }
 
-            const replyText = `Thanks ${userName}! I have logged your request and our team will reach out at ${userEmail} very soon.`;
+            const reply = `Thanks ${userName}! I have logged your request. Our team will reach out soon at ${userEmail}.`;
 
             await saveConversationRecord({
                 session_id: sessionId,
@@ -422,33 +361,27 @@ app.post('/dialogflow', async (request, response) => {
                 user_email: userEmail,
                 user_message: userMessage,
                 channel,
-                response_text: replyText,
+                response_text: reply,
                 intent_confidence: intentConfidence,
                 used_gemini: false,
                 record_type: 'support'
             });
 
-            return response.json({
-                "fulfillmentMessages": [{
-                    "text": {
-                        "text": [
-                            replyText
-                        ]
-                    }
-                }]
+            return res.json({
+                fulfillmentMessages: [
+                    { text: { text: [reply] } }
+                ]
             });
-        } else if (intentName === 'FAQ') {
-            console.log('✅ FAQ intent triggered');
+        }
 
-            const normalizedFaqText = (queryText || '').trim().toLowerCase();
-            const isFaqChipClick =
-                normalizedFaqText === 'faq' ||
-                normalizedFaqText === 'frequently asked questions';
+        if (intentName === 'FAQ') {
+            console.log('✅ FAQ flow');
 
-            // Step 1: user clicked the FAQ chip -> ask them to type their question
-            if (isFaqChipClick) {
-                const promptText = 'Here are some frequently asked questions. You can tap one of them or type your own question.';
+            const normalizedText = queryText.trim().toLowerCase();
+            const isChip = normalizedText === 'faq' || normalizedText === 'frequently asked questions';
 
+            if (isChip) {
+                const promptText = 'Here are some FAQs. Tap one or type your own question.';
                 faqPendingSessions.add(sessionId);
 
                 await saveConversationRecord({
@@ -462,41 +395,32 @@ app.post('/dialogflow', async (request, response) => {
                     used_gemini: false
                 });
 
-                return response.json({
-                    "fulfillmentMessages": [
-                        {
-                            "text": {
-                                "text": [
-                                    promptText
-                                ]
-                            }
-                        },
-                        buildChipsPayload(
-                            FAQ_PREDEFINED.map(item => ({
-                                text: item.question
-                            }))
-                        )
+                return res.json({
+                    fulfillmentMessages: [
+                        { text: { text: [promptText] } },
+                        buildChipsPayload(FAQ_PREDEFINED.map(item => ({ text: item.question })))
                     ]
                 });
             }
 
-            // Step 2: user has typed an actual question -> answer with Gemini and store Q&A
+            // User typed question
             const userName = extractName(parameters);
             const userEmail = extractEmail(parameters);
-            const faqQuestion = extractFaqTopic(parameters, queryText) || queryText;
+            const faqQuestion = extractFaqTopic(parameters, queryText);
 
-            const normalizedFaqQuestion = (faqQuestion || '').trim().toLowerCase();
-            const predefinedAnswer = FAQ_ANSWER_MAP[normalizedFaqQuestion];
+            // FIXED: Using logical AND (&&) as requested for safe string method chaining
+            const normQ = faqQuestion && faqQuestion.trim().toLowerCase();
+
+            const predefined = FAQ_ANSWER_MAP[normQ];
 
             let faqAnswer;
-            let usedGeminiForFaq = false;
-
-            if (predefinedAnswer) {
-                faqAnswer = predefinedAnswer;
+            let usedGemini = false;
+            if (predefined) {
+                faqAnswer = predefined;
             } else {
-                const geminiPrompt = `The user is asking an FAQ about our products or services.\n\nQuestion: "${faqQuestion}"\n\nProvide a clear, concise answer in simple language.`;
-                faqAnswer = await generateFallbackResponse(geminiPrompt);
-                usedGeminiForFaq = true;
+                const prompt = `User is asking: "${faqQuestion}". Provide a simple, clear answer.`;
+                faqAnswer = await generateFallbackResponse(prompt);
+                usedGemini = true;
             }
 
             faqPendingSessions.delete(sessionId);
@@ -511,7 +435,7 @@ app.post('/dialogflow', async (request, response) => {
                 response_text: faqAnswer,
                 record_type: 'faq',
                 intent_confidence: intentConfidence,
-                used_gemini: usedGeminiForFaq
+                used_gemini: usedGemini
             });
 
             await saveFaqRecord({
@@ -523,30 +447,24 @@ app.post('/dialogflow', async (request, response) => {
                 channel,
                 intent_name: intentName,
                 intent_confidence: intentConfidence,
-                used_gemini: usedGeminiForFaq
+                used_gemini: usedGemini
             });
 
-            return response.json({
-                "fulfillmentMessages": [{
-                    "text": {
-                        "text": [
-                            faqAnswer
-                        ]
-                    }
-                }]
+            return res.json({
+                fulfillmentMessages: [
+                    { text: { text: [faqAnswer] } }
+                ]
             });
-        } else if (intentName === 'Feedback') {
-            console.log('✅ Feedback intent triggered');
+        }
 
-            const normalizedFeedbackText = (queryText || '').trim().toLowerCase();
-            const isFeedbackChipClick =
-                normalizedFeedbackText === 'feedback' ||
-                normalizedFeedbackText === 'leave feedback';
+        if (intentName === 'Feedback') {
+            console.log('✅ Feedback flow');
 
-            // Step 1: user clicked the Feedback chip -> ask them to type their feedback
-            if (isFeedbackChipClick) {
-                const promptText = 'Please type your feedback and I will share it with our team.';
+            const normalizedText = queryText.trim().toLowerCase();
+            const isChip = normalizedText === 'feedback' || normalizedText === 'leave feedback';
 
+            if (isChip) {
+                const prompt = 'Please type your feedback below.';
                 feedbackPendingSessions.add(sessionId);
 
                 await saveConversationRecord({
@@ -554,31 +472,27 @@ app.post('/dialogflow', async (request, response) => {
                     intent_name: intentName,
                     user_message: queryText,
                     channel,
-                    response_text: promptText,
+                    response_text: prompt,
                     record_type: 'feedback_start',
                     intent_confidence: intentConfidence,
                     used_gemini: false
                 });
 
-                return response.json({
-                    "fulfillmentMessages": [{
-                        "text": {
-                            "text": [
-                                promptText
-                            ]
-                        }
-                    }]
+                return res.json({
+                    fulfillmentMessages: [
+                        { text: { text: [prompt] } }
+                    ]
                 });
             }
 
-            // Step 2: user has typed actual feedback -> store and thank them
+            // User provided feedback
             const userName = extractName(parameters);
             const userEmail = extractEmail(parameters);
             const feedbackText = extractUserMessage(parameters, queryText);
             const feedbackRating = extractRating(parameters);
-            const replyText = 'Thanks for your feedback. It really helps us improve our service.';
 
             feedbackPendingSessions.delete(sessionId);
+            const thankYou = 'Thanks for your feedback — it really helps us!';
 
             await saveConversationRecord({
                 session_id: sessionId,
@@ -587,7 +501,7 @@ app.post('/dialogflow', async (request, response) => {
                 user_email: userEmail,
                 user_message: feedbackText,
                 channel,
-                response_text: replyText,
+                response_text: thankYou,
                 feedback_rating: feedbackRating,
                 record_type: 'feedback',
                 intent_confidence: intentConfidence,
@@ -606,179 +520,81 @@ app.post('/dialogflow', async (request, response) => {
                 used_gemini: false
             });
 
-            return response.json({
-                "fulfillmentMessages": [{
-                    "text": {
-                        "text": [
-                            replyText
-                        ]
-                    }
-                }]
-            });
-        } else {
-            const hasPendingFaq = faqPendingSessions.has(sessionId);
-            const hasPendingFeedback = feedbackPendingSessions.has(sessionId);
-
-            if (hasPendingFaq) {
-                console.log('ℹ️ FAQ follow-up detected in fallback handler');
-
-                const faqQuestion = queryText || '';
-                const normalizedFaqQuestion = faqQuestion.trim().toLowerCase();
-                const predefinedAnswer = FAQ_ANSWER_MAP[normalizedFaqQuestion];
-
-                let faqAnswer;
-                let usedGeminiForFaq = false;
-
-                if (predefinedAnswer) {
-                    faqAnswer = predefinedAnswer;
-                } else {
-                    const geminiPrompt = `The user is asking an FAQ about our products or services.\n\nQuestion: "${faqQuestion}"\n\nProvide a clear, concise answer in simple language.`;
-                    faqAnswer = await generateFallbackResponse(geminiPrompt);
-                    usedGeminiForFaq = true;
-                }
-
-                faqPendingSessions.delete(sessionId);
-
-                await saveConversationRecord({
-                    session_id: sessionId,
-                    intent_name: 'FAQ',
-                    user_name: extractName(parameters),
-                    user_email: extractEmail(parameters),
-                    user_message: faqQuestion,
-                    channel,
-                    response_text: faqAnswer,
-                    record_type: 'faq',
-                    intent_confidence: intentConfidence,
-                    used_gemini: usedGeminiForFaq,
-                    fallback_reason: usedGeminiForFaq ? 'faq_followup' : 'faq_followup_predefined'
-                });
-
-                await saveFaqRecord({
-                    session_id: sessionId,
-                    user_name: extractName(parameters),
-                    user_email: extractEmail(parameters),
-                    question_text: faqQuestion,
-                    answer_text: faqAnswer,
-                    channel,
-                    intent_name: 'FAQ',
-                    intent_confidence: intentConfidence,
-                    used_gemini: usedGeminiForFaq
-                });
-
-                return response.json({
-                    "fulfillmentMessages": [{
-                        "text": {
-                            "text": [
-                                faqAnswer
-                            ]
-                        }
-                    }]
-                });
-            }
-
-            if (hasPendingFeedback) {
-                console.log('ℹ️ Feedback follow-up detected in fallback handler');
-
-                const userName = extractName(parameters);
-                const userEmail = extractEmail(parameters);
-                const feedbackText = extractUserMessage(parameters, queryText);
-                const feedbackRating = extractRating(parameters);
-                const replyText = 'Thanks for your feedback. It really helps us improve our service.';
-
-                feedbackPendingSessions.delete(sessionId);
-
-                await saveConversationRecord({
-                    session_id: sessionId,
-                    intent_name: 'Feedback',
-                    user_name: userName,
-                    user_email: userEmail,
-                    user_message: feedbackText,
-                    channel,
-                    response_text: replyText,
-                    feedback_rating: feedbackRating,
-                    record_type: 'feedback',
-                    intent_confidence: intentConfidence,
-                    used_gemini: false,
-                    fallback_reason: 'feedback_followup'
-                });
-
-                await saveFeedbackRecord({
-                    session_id: sessionId,
-                    user_name: userName,
-                    user_email: userEmail,
-                    feedback_text: feedbackText,
-                    feedback_rating: feedbackRating,
-                    channel,
-                    intent_name: 'Feedback',
-                    intent_confidence: intentConfidence,
-                    used_gemini: false
-                });
-
-                return response.json({
-                    "fulfillmentMessages": [{
-                        "text": {
-                            "text": [
-                                replyText
-                            ]
-                        }
-                    }]
-                });
-            }
-
-            console.log('⚙️  Fallback handler hit');
-            const fallbackText = await generateFallbackResponse(queryText || 'Hello');
-
-            await saveConversationRecord({
-                session_id: sessionId,
-                intent_name: intentName,
-                user_message: queryText,
-                channel,
-                response_text: fallbackText,
-                intent_confidence: intentConfidence,
-                used_gemini: true,
-                fallback_reason: 'unknown_intent'
-            });
-
-            return response.json({
-                "fulfillmentText": fallbackText
+            return res.json({
+                fulfillmentMessages: [
+                    { text: { text: [thankYou] } }
+                ]
             });
         }
-    } catch (error) {
-        console.error('❌ Error handling Dialogflow request:', error);
-        return response.json({
-            "fulfillmentText": "Something went wrong while processing your request. Please try again."
+
+        // --- Fallback Handler ---
+        console.log('⚙️ Fallback handler triggered');
+        const fallback = await generateFallbackResponse(queryText || 'Hello');
+
+        await saveConversationRecord({
+            session_id: sessionId,
+            intent_name: intentName,
+            user_message: queryText,
+            channel,
+            response_text: fallback,
+            intent_confidence: intentConfidence,
+            used_gemini: true,
+            fallback_reason: 'unknown_intent'
+        });
+
+        return res.json({
+            fulfillmentText: fallback
+        });
+    } catch (err) {
+        console.error('❌ Webhook Error:', err);
+        return res.json({
+            fulfillmentText: 'Something went wrong. Please try again later.'
         });
     }
 });
+
+// --- ADMIN ROUTES ---
 app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-app.get('/api/admin/overview', async (req, res) => {
+app.get('/api/admin/overview', async(req, res) => {
     if (!supabase) {
-        return res.status(500).json({ error: 'Supabase client is not initialised' });
+        return res.status(500).json({ error: 'Supabase not initialised.' });
     }
 
     try {
-        const [convCountRes, faqCountRes, feedbackCountRes, convRowsRes, faqRowsRes] = await Promise.all([
+        const [
+            convCountRes,
+            faqCountRes,
+            feedbackCountRes,
+            convRowsRes,
+            faqRowsRes
+        ] = await Promise.all([
             supabase.from(conversationsTable).select('*', { count: 'exact', head: true }),
             supabase.from(faqTable).select('*', { count: 'exact', head: true }),
             supabase.from(feedbackTable).select('*', { count: 'exact', head: true }),
             supabase
-                .from(conversationsTable)
-                .select('id, session_id, intent_name, user_name, user_email, created_at, used_gemini, fallback_reason')
-                .order('created_at', { ascending: false })
-                .limit(100),
+            .from(conversationsTable)
+            .select('id, session_id, intent_name, user_name, user_email, created_at, used_gemini, fallback_reason')
+            .order('created_at', { ascending: false })
+            .limit(100),
             supabase
-                .from(faqTable)
-                .select('id, question_text, created_at')
-                .order('created_at', { ascending: false })
-                .limit(500)
+            .from(faqTable)
+            .select('id, question_text, created_at')
+            .order('created_at', { ascending: false })
+            .limit(500)
         ]);
 
         if (convCountRes.error || faqCountRes.error || feedbackCountRes.error || convRowsRes.error || faqRowsRes.error) {
-            console.error('❌ Admin overview query error', convCountRes.error || faqCountRes.error || feedbackCountRes.error || convRowsRes.error || faqRowsRes.error);
-            return res.status(500).json({ error: 'Failed to query Supabase for admin overview' });
+            console.error('❌ Admin overview query error', {
+                convError: convCountRes.error,
+                faqError: faqCountRes.error,
+                feedbackError: feedbackCountRes.error,
+                convRowsError: convRowsRes.error,
+                faqRowsError: faqRowsRes.error
+            });
+            return res.status(500).json({ error: 'Failed to get admin data' });
         }
 
         const totals = {
@@ -790,28 +606,25 @@ app.get('/api/admin/overview', async (req, res) => {
         const convRows = convRowsRes.data || [];
         const faqRows = faqRowsRes.data || [];
 
-        const geminiUsageMap = {};
-        const failedIntentsMap = {};
-        const userMap = {};
+        const geminiUsage = {};
+        const fallbackCounts = {};
+        const userLastSeen = {};
 
         for (const row of convRows) {
-            const intentKey = row.intent_name || 'Unknown';
+            const intent = row.intent_name || 'Unknown';
             if (row.used_gemini) {
-                geminiUsageMap[intentKey] = (geminiUsageMap[intentKey] || 0) + 1;
+                geminiUsage[intent] = (geminiUsage[intent] || 0) + 1;
                 if (row.fallback_reason) {
-                    const fk = `${intentKey}|${row.fallback_reason}`;
-                    const existing = failedIntentsMap[fk] || { intent_name: intentKey, fallback_reason: row.fallback_reason, count: 0 };
-                    existing.count += 1;
-                    failedIntentsMap[fk] = existing;
+                    const key = `${intent}|${row.fallback_reason}`;
+                    fallbackCounts[key] = (fallbackCounts[key] || 0) + 1;
                 }
             }
-
             if (row.user_email) {
-                const key = row.user_email;
-                const existingUser = userMap[key];
-                if (!existingUser || new Date(row.created_at) > new Date(existingUser.last_seen)) {
-                    userMap[key] = {
-                        user_email: row.user_email,
+                const email = row.user_email;
+                const last = userLastSeen[email];
+                if (!last || new Date(row.created_at) > new Date(last.last_seen)) {
+                    userLastSeen[email] = {
+                        user_email: email,
                         user_name: row.user_name,
                         last_seen: row.created_at
                     };
@@ -819,38 +632,41 @@ app.get('/api/admin/overview', async (req, res) => {
             }
         }
 
-        const geminiUsageByIntent = Object.entries(geminiUsageMap).map(([intent_name, count]) => ({ intent_name, count }));
-        const failedIntents = Object.values(failedIntentsMap);
+        const geminiUsageByIntent = Object.entries(geminiUsage).map(([intent_name, count]) => ({ intent_name, count }));
+        const fallbackList = Object.entries(fallbackCounts).map(([key, count]) => {
+            const [intent_name, fallback_reason] = key.split('|');
+            return { intent_name, fallback_reason, count };
+        });
 
         const faqCountMap = {};
         for (const row of faqRows) {
             const q = row.question_text || 'Unknown';
             faqCountMap[q] = (faqCountMap[q] || 0) + 1;
         }
+
         const topFaqs = Object.entries(faqCountMap)
             .map(([question_text, count]) => ({ question_text, count }))
-            .sort((a, b) => (b.count || 0) - (a.count || 0))
+            .sort((a, b) => b.count - a.count)
             .slice(0, 10);
 
-        const recentConversations = convRows;
-        const recentUsers = Object.values(userMap)
+        const recentUsers = Object.values(userLastSeen)
             .sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen))
             .slice(0, 20);
 
         return res.json({
             totals,
             geminiUsageByIntent,
-            failedIntents,
+            fallbackList,
             topFaqs,
-            recentConversations,
+            recentConversations: convRows,
             recentUsers
         });
-    } catch (error) {
-        console.error('❌ Error building admin overview:', error);
+    } catch (err) {
+        console.error('❌ Error building admin overview:', err);
         return res.status(500).json({ error: 'Failed to build admin overview' });
     }
 });
 
 app.listen(port, () => {
-    console.log(`Saylani Bot is running locally on port ${port}`);
+    console.log(`Bot server running on port ${port}`);
 });
